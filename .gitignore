@@ -19,3 +19,5 @@ input/*
 output/*
 !output/example_result.csv
 !.gitignore
+!LICENSE
+!README.md
