@@ -211,9 +211,9 @@ def mcmc(data):
     # corner plot
     samples_unit_converted = copy.deepcopy(samples)
     for i in range(samples_unit_converted.shape[1]):
-        if i == 1:
+        if i == 0:
             samples_unit_converted[:, i] = (np.rad2deg(mean_ra) + mas2deg(samples_unit_converted[:, i]))/cDEC
-        elif i == 2:
+        elif i == 1:
             samples_unit_converted[:, i] = np.rad2deg(mean_dec) + mas2deg(samples_unit_converted[:, i])
 
     labels = ["$\\alpha$", "$\\delta$", "$\\varpi$", "$\\mu_{\\alpha}$", "$\\mu_{\\delta}$"]  # 支持Latex
