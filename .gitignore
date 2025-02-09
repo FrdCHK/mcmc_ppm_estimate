@@ -18,6 +18,7 @@ input/*
 !output
 output/*
 !output/example_result.csv
+!output/example_normalized.csv
 !.gitignore
 !LICENSE
 !README.md

@@ -240,6 +240,7 @@ def mcmc(data):
         # for error floor
         # 如果数据点<4，自由度不足以执行error floor迭代！
         if len(obs)<4:
+            print("obs num<4, break!")
             break
         # 两个方向上独立error floor的前提假设：两者独立
         print(f"chi2 in two directions: {chi2_direction[0]:.4f} {chi2_direction[1]:.4f}")
@@ -251,16 +252,6 @@ def mcmc(data):
             mean_diag = np.mean(cov[:, [0, 1], [0, 1]], axis=0)
             d_err = mean_diag * (chi2_direction - 1)
 
-            # sys_err = np.clip(sys_err+d_err, 0, None)
-
-            # for j in [0, 1]:
-            #     if np.any((cov0[:, j, j]+d_err[j])<0):
-            #         d_err[j] = 1e-3-cov0[j, j]
-            # sys_err += d_err
-            # print(f"sys err = {sys_err[0]:.4f} {sys_err[1]:.4f}")
-            # sys_cov = np.diag(sys_err)
-            # cov = cov0 + sys_cov
-
             # 如果需要调整某方向上的不确定度，则加减error floor；如果减小到sys_err=0仍卡方<1，则乘卡方
             cov_new = copy.deepcopy(cov0)
             for j in [0, 1]:
@@ -271,17 +262,24 @@ def mcmc(data):
                     cov_new[:, j, j] *= sys_coef[j]
                 else:
                     sys_err[j] += d_err[j]
-            sys_cov = np.diag(sys_err)
-            cov = cov_new + sys_cov
+            # 按比例分配error floor，使得平权效果介于乘卡方与加floor之间
+            sys_cov = np.zeros((len(obs), 2, 2))
+            proportion = len(obs)*cov[:, [0, 1], [0, 1]]/np.sum(cov[:, [0, 1], [0, 1]], axis=0)
+            for i in range(len(obs)):
+                sys_cov[i] = np.diag(sys_err*proportion[i])
 
-            # print(cov)
-            print(f"  sys err added: {sys_err[0]:.4f} {sys_err[1]:.4f}")
-            print(f"sys coef multed: {sys_coef[0]:.4f} {sys_coef[1]:.4f}")
+            cov = cov_new + sys_cov
 
         n += 1
 
     if n == max_iterations:
         print("Reached maximum iterations without convergence.")
+
+    # export data with normalized uncertainties
+    data_normalized = data.copy(deep=True)
+    for i, row in data_normalized.iterrows():
+        data_normalized.loc[i, 'RA_ERR'] = np.sqrt(cov[i, 0, 0])
+        data_normalized.loc[i, 'DEC_ERR'] = np.sqrt(cov[i, 1, 1])
 
     # corner plot
     samples_unit_converted = copy.deepcopy(samples)
@@ -297,4 +295,4 @@ def mcmc(data):
     fig.savefig(f"image/pdf/{data.at[0, 'NAME']}-{data.at[0, 'MODE']}.pdf", bbox_inches='tight')
     plt.close('all')
 
-    return result
+    return result, data_normalized

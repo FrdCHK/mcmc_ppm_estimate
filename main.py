@@ -19,6 +19,7 @@ if __name__ == "__main__":
                                     "PLX_PMRA_CORR", "PLX_PMDEC_CORR", "PMRA_PMDEC_CORR"])
     for i in range(len(filenames)):
         data = pd.read_csv(os.path.join("input", filenames[i]))
-        result = mcmc(data)
+        result, normalized = mcmc(data)
         results = pd.concat([results, result], axis=0, ignore_index=True)
+        normalized.to_csv(os.path.join("output", "example_normalized.csv"), index=False)
     results.to_csv(os.path.join("output", "example_result.csv"), index=False)
