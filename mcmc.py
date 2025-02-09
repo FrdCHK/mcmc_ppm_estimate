@@ -11,6 +11,8 @@ from multiprocessing import Pool
 import corner
 import copy
 
+from sympy import pprint
+
 from corr2cov import corr2cov
 from adj import adj
 from sun_position import sun_position
@@ -80,7 +82,7 @@ def log_likelihood(theta, delta_epo):
         x = np.expand_dims(gl_ob[i, :], axis=1)  # 观测值, 列向量
         m = np.expand_dims(model(theta, delta_epo[i], (gl_sun_pos[0][i], gl_sun_pos[1][i], gl_sun_pos[2][i]), gl_trigo), axis=1)  # 模型预测值, 列向量
         likeli_sum += np.log(1/np.sqrt(np.linalg.det(gl_cov[i]))) - ((x-m).T @ np.linalg.inv(gl_cov[i]) @ (x-m))[0][0]/2
-        likeli_sum += np.log(1/np.sqrt(np.linalg.det(gl_cov[i]))) - ((x-m).T @ np.linalg.inv(gl_cov[i]) @ (x-m))[0][0]/2
+        # likeli_sum += np.log(1/np.sqrt(np.linalg.det(gl_cov[i]))) - ((x-m).T @ np.linalg.inv(gl_cov[i]) @ (x-m))[0][0]/2
     return num * np.log(1 / (2 * np.pi)) + likeli_sum
 
 
@@ -161,52 +163,125 @@ def mcmc(data):
     cRA = np.cos(mean_ra/cDEC)
 
     t0 = [rad2mas(np.deg2rad(adj_res[0]) * cDEC - mean_ra), rad2mas(np.deg2rad(adj_res[1]) - mean_dec), adj_res[2], adj_res[3], adj_res[4]]
-    samples = sampling(delta_epoch, obs, cov, sun_pos, (sRA, cRA, sDEC, cDEC), t0)
 
-    # 计算参数的中位数
-    param_medians = np.median(samples, axis=0)
-    # 计算协方差矩阵
-    cov_matrix = np.cov(samples.T)
-    # 提取参数的不确定性（标准差）
-    param_stds = np.sqrt(np.diag(cov_matrix))
+    max_iterations = 20  # 添加最大迭代次数限制
+    n = 0
+    sys_err = np.array([0., 0.])
+    sys_coef = np.array([1., 1.])
+    cov0 = copy.deepcopy(cov)
+    while n < max_iterations:
+        samples = sampling(delta_epoch, obs, cov, sun_pos, (sRA, cRA, sDEC, cDEC), t0)
 
-    # 计算相关系数矩阵
-    corr_matrix = np.corrcoef(samples, rowvar=False)
+        # 计算参数的中位数
+        param_medians = np.median(samples, axis=0)
+        # 计算协方差矩阵
+        cov_matrix = np.cov(samples.T)
+        # 提取参数的不确定性（标准差）
+        param_stds = np.sqrt(np.diag(cov_matrix))
 
-    # 提取相关系数 (对称矩阵的上三角部分，不包括对角线)
-    corr_indices = [(0, 1), (0, 2), (0, 3), (0, 4),
-                    (1, 2), (1, 3), (1, 4),
-                    (2, 3), (2, 4),
-                    (3, 4)]
-    correlations = [corr_matrix[i, j] for i, j in corr_indices]
+        # 计算相关系数矩阵
+        corr_matrix = np.corrcoef(samples, rowvar=False)
 
-    # 创建行数据
-    row = [data.at[0, 'NAME'], data.at[0, 'MODE'], ref_epoch,
-        (np.rad2deg(mean_ra) + mas2deg(param_medians[0]))/cDEC, param_stds[0],  # RA, RA_ERR
-        np.rad2deg(mean_dec) + mas2deg(param_medians[1]), param_stds[1],  # DEC, DEC_ERR
-        param_medians[2], param_stds[2],  # PLX, PLX_ERR
-        param_medians[3], param_stds[3],  # PMRA, PMRA_ERR
-        param_medians[4], param_stds[4],  # PMDEC, PMDEC_ERR
-        *correlations  # 所有相关系数
-    ]
-    print("MCMC result:")
-    print(row[3:13:2])
-    result = pd.DataFrame([row], columns = ["NAME", "MODE", "EPOCH", "RA", "RA_ERR", "DEC", "DEC_ERR",
-                                            "PLX", "PLX_ERR", "PMRA", "PMRA_ERR", "PMDEC", "PMDEC_ERR",
-                                            "RA_DEC_CORR", "RA_PLX_CORR", "RA_PMRA_CORR", "RA_PMDEC_CORR",
-                                            "DEC_PLX_CORR", "DEC_PMRA_CORR", "DEC_PMDEC_CORR",
-                                            "PLX_PMRA_CORR", "PLX_PMDEC_CORR", "PMRA_PMDEC_CORR"])
+        # 提取相关系数 (对称矩阵的上三角部分，不包括对角线)
+        corr_indices = [(0, 1), (0, 2), (0, 3), (0, 4),
+                        (1, 2), (1, 3), (1, 4),
+                        (2, 3), (2, 4),
+                        (3, 4)]
+        correlations = [corr_matrix[i, j] for i, j in corr_indices]
 
-    # 计算模型值
-    model_values = np.array([model(param_medians, delta_epoch[i], (sun_pos[0][i], sun_pos[1][i], sun_pos[2][i]), (sRA, cRA, sDEC, cDEC)) for i in range(len(delta_epoch))])
+        # 创建行数据
+        row = [data.at[0, 'NAME'], data.at[0, 'MODE'], ref_epoch,
+            (np.rad2deg(mean_ra) + mas2deg(param_medians[0]))/cDEC, param_stds[0],  # RA, RA_ERR
+            np.rad2deg(mean_dec) + mas2deg(param_medians[1]), param_stds[1],  # DEC, DEC_ERR
+            param_medians[2], param_stds[2],  # PLX, PLX_ERR
+            param_medians[3], param_stds[3],  # PMRA, PMRA_ERR
+            param_medians[4], param_stds[4],  # PMDEC, PMDEC_ERR
+            *correlations  # 所有相关系数
+        ]
+        print("MCMC result:")
+        print(row[3:13:2])
+        result = pd.DataFrame([row], columns = ["NAME", "MODE", "EPOCH", "RA", "RA_ERR", "DEC", "DEC_ERR",
+                                                "PLX", "PLX_ERR", "PMRA", "PMRA_ERR", "PMDEC", "PMDEC_ERR",
+                                                "RA_DEC_CORR", "RA_PLX_CORR", "RA_PMRA_CORR", "RA_PMDEC_CORR",
+                                                "DEC_PLX_CORR", "DEC_PMRA_CORR", "DEC_PMDEC_CORR",
+                                                "PLX_PMRA_CORR", "PLX_PMDEC_CORR", "PMRA_PMDEC_CORR"])
 
-    # 计算卡方
-    chi_square = 0
-    for i in range(len(obs)):
-        diff = np.expand_dims(obs[i] - model_values[i], 1)
-        chi_square += (diff.T @ np.linalg.inv(cov[i]) @ diff)[0, 0]
+        # 计算模型值
+        model_values = np.array([model(param_medians, delta_epoch[i], (sun_pos[0][i], sun_pos[1][i], sun_pos[2][i]), (sRA, cRA, sDEC, cDEC)) for i in range(len(delta_epoch))])
 
-    result['CHI_SQUARE'] = chi_square/(len(obs)*2-5)
+        # 计算卡方
+        chi_square_tot = 0
+        chi_square_direction = np.array([0., 0.])
+        loss = []
+        for i in range(len(obs)):
+            diff = np.expand_dims(obs[i] - model_values[i], 1)
+            cov_inv = np.linalg.inv(cov[i])
+            chi_square_direction += [(diff[0, 0]**2)*cov_inv[0, 0], (diff[1, 0]**2)*cov_inv[1, 1]]
+            loss.append((diff.T @ cov_inv @ diff)[0, 0])
+            chi_square_tot += loss[i]
+        free = len(obs)*2-5
+        chi2 = chi_square_tot/free
+        chi2_direction = chi_square_direction/free*2
+        result['CHI_SQUARE'] = chi2
+
+        # for outlier removal
+        # if (chi2 < 80) or (len(obs) < 4):
+        #     break
+        # else:
+        #     max_index = loss.index(max(loss))
+        #     delta_epoch = np.delete(delta_epoch, max_index)
+        #     obs = np.delete(obs, max_index, axis=0)
+        #     cov = np.delete(cov, max_index, axis=0)
+        #     sun_pos = (np.delete(sun_pos[0], max_index),
+        #                np.delete(sun_pos[1], max_index),
+        #                np.delete(sun_pos[2], max_index))
+        #     print(f"{data.at[max_index, 'SESSION']} removed due to high loss!")
+
+        # for error floor
+        # 如果数据点<4，自由度不足以执行error floor迭代！
+        if len(obs)<4:
+            break
+        # 两个方向上独立error floor的前提假设：两者独立
+        print(f"chi2 in two directions: {chi2_direction[0]:.4f} {chi2_direction[1]:.4f}")
+        if np.abs(chi2 - 1) < 1e-3:
+            print(f"chi2={chi2:.4f}, break!")
+            break
+        else:
+            print(f"chi2={chi2:.4f}, continue!")
+            mean_diag = np.mean(cov[:, [0, 1], [0, 1]], axis=0)
+            d_err = mean_diag * (chi2_direction - 1)
+
+            # sys_err = np.clip(sys_err+d_err, 0, None)
+
+            # for j in [0, 1]:
+            #     if np.any((cov0[:, j, j]+d_err[j])<0):
+            #         d_err[j] = 1e-3-cov0[j, j]
+            # sys_err += d_err
+            # print(f"sys err = {sys_err[0]:.4f} {sys_err[1]:.4f}")
+            # sys_cov = np.diag(sys_err)
+            # cov = cov0 + sys_cov
+
+            # 如果需要调整某方向上的不确定度，则加减error floor；如果减小到sys_err=0仍卡方<1，则乘卡方
+            cov_new = copy.deepcopy(cov0)
+            for j in [0, 1]:
+                if (sys_err[j] > 0) and ((sys_err[j] + d_err[j]) < 0):
+                    sys_err[j] = 0
+                elif (sys_err[j] == 0) and (d_err[j] < 0):
+                    sys_coef[j] *= chi2_direction[j]
+                    cov_new[:, j, j] *= sys_coef[j]
+                else:
+                    sys_err[j] += d_err[j]
+            sys_cov = np.diag(sys_err)
+            cov = cov_new + sys_cov
+
+            # print(cov)
+            print(f"  sys err added: {sys_err[0]:.4f} {sys_err[1]:.4f}")
+            print(f"sys coef multed: {sys_coef[0]:.4f} {sys_coef[1]:.4f}")
+
+        n += 1
+
+    if n == max_iterations:
+        print("Reached maximum iterations without convergence.")
 
     # corner plot
     samples_unit_converted = copy.deepcopy(samples)
