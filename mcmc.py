@@ -248,7 +248,7 @@ def mcmc(data):
             break
         # 两个方向上独立error floor的前提假设：两者独立
         print(f"chi2 in two directions: {chi2_direction[0]:.4f} {chi2_direction[1]:.4f}")
-        if np.abs(chi2 - 1) < 1e-3:
+        if np.abs(chi2 - 1) < 1e-2:
             print(f"chi2={chi2:.4f}, break!")
             break
         else:
@@ -271,7 +271,7 @@ def mcmc(data):
             proportion_ra = len(obs)*np.array(chi_square_ra)/np.sum(chi_square_ra)
             proportion_dec = len(obs)*np.array(chi_square_dec)/np.sum(chi_square_dec)
             for i in range(len(obs)):
-                sys_cov[i] = np.diag(sys_err*np.array(proportion_ra[i], proportion_dec[i]))
+                sys_cov[i] = np.diag(sys_err*(np.array(proportion_ra[i], proportion_dec[i])+1)/2)
 
             cov = cov_new + sys_cov
 
