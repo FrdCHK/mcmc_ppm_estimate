@@ -212,11 +212,15 @@ def mcmc(data):
         # 计算卡方
         chi_square_tot = 0
         chi_square_direction = np.array([0., 0.])
+        chi_square_ra = []
+        chi_square_dec = []
         loss = []
         for i in range(len(obs)):
             diff = np.expand_dims(obs[i] - model_values[i], 1)
             cov_inv = np.linalg.inv(cov[i])
-            chi_square_direction += [(diff[0, 0]**2)*cov_inv[0, 0], (diff[1, 0]**2)*cov_inv[1, 1]]
+            chi_square_ra.append((diff[0, 0]**2)*cov_inv[0, 0])
+            chi_square_dec.append((diff[1, 0]**2)*cov_inv[1, 1])
+            chi_square_direction += [chi_square_ra[-1], chi_square_dec[-1]]
             loss.append((diff.T @ cov_inv @ diff)[0, 0])
             chi_square_tot += loss[i]
         free = len(obs)*2-5
@@ -264,9 +268,10 @@ def mcmc(data):
                     sys_err[j] += d_err[j]
             # 按比例分配error floor，使得平权效果介于乘卡方与加floor之间
             sys_cov = np.zeros((len(obs), 2, 2))
-            proportion = len(obs)*cov[:, [0, 1], [0, 1]]/np.sum(cov[:, [0, 1], [0, 1]], axis=0)
+            proportion_ra = len(obs)*np.array(chi_square_ra)/np.sum(chi_square_ra)
+            proportion_dec = len(obs)*np.array(chi_square_dec)/np.sum(chi_square_dec)
             for i in range(len(obs)):
-                sys_cov[i] = np.diag(sys_err*proportion[i])
+                sys_cov[i] = np.diag(sys_err*np.array(proportion_ra[i], proportion_dec[i]))
 
             cov = cov_new + sys_cov
 
