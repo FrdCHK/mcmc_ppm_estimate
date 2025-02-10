@@ -211,35 +211,18 @@ def mcmc(data):
 
         # 计算卡方
         chi_square_tot = 0
-        chi_square_direction = np.array([0., 0.])
-        chi_square_ra = []
-        chi_square_dec = []
+        chi_square_direction = np.zeros((len(obs), 2))
         loss = []
         for i in range(len(obs)):
             diff = np.expand_dims(obs[i] - model_values[i], 1)
             cov_inv = np.linalg.inv(cov[i])
-            chi_square_ra.append((diff[0, 0]**2)*cov_inv[0, 0])
-            chi_square_dec.append((diff[1, 0]**2)*cov_inv[1, 1])
-            chi_square_direction += [chi_square_ra[-1], chi_square_dec[-1]]
+            chi_square_direction[i] = [(diff[0, 0]**2)*cov_inv[0, 0], (diff[1, 0]**2)*cov_inv[1, 1]]
             loss.append((diff.T @ cov_inv @ diff)[0, 0])
             chi_square_tot += loss[i]
         free = len(obs)*2-5
         chi2 = chi_square_tot/free
-        chi2_direction = chi_square_direction/free*2
+        chi2_direction = np.sum(chi_square_direction, axis=0)/free*2
         result['CHI_SQUARE'] = chi2
-
-        # for outlier removal
-        # if (chi2 < 80) or (len(obs) < 4):
-        #     break
-        # else:
-        #     max_index = loss.index(max(loss))
-        #     delta_epoch = np.delete(delta_epoch, max_index)
-        #     obs = np.delete(obs, max_index, axis=0)
-        #     cov = np.delete(cov, max_index, axis=0)
-        #     sun_pos = (np.delete(sun_pos[0], max_index),
-        #                np.delete(sun_pos[1], max_index),
-        #                np.delete(sun_pos[2], max_index))
-        #     print(f"{data.at[max_index, 'SESSION']} removed due to high loss!")
 
         # for error floor
         # 如果数据点<4，自由度不足以执行error floor迭代！
@@ -247,12 +230,12 @@ def mcmc(data):
             print("obs num<4, break!")
             break
         # 两个方向上独立error floor的前提假设：两者独立
-        print(f"chi2 in two directions: {chi2_direction[0]:.4f} {chi2_direction[1]:.4f}")
+        print(f"chi2 in two directions: {chi2_direction[0]:.3f} {chi2_direction[1]:.3f}")
         if np.abs(chi2 - 1) < 1e-2:
-            print(f"chi2={chi2:.4f}, break!")
+            print(f"chi2={chi2:.3f}, break!")
             break
         else:
-            print(f"chi2={chi2:.4f}, continue!")
+            print(f"chi2={chi2:.3f}, continue!")
             mean_diag = np.mean(cov[:, [0, 1], [0, 1]], axis=0)
             d_err = mean_diag * (chi2_direction - 1)
 
@@ -268,10 +251,12 @@ def mcmc(data):
                     sys_err[j] += d_err[j]
             # 按比例分配error floor，使得平权效果介于乘卡方与加floor之间
             sys_cov = np.zeros((len(obs), 2, 2))
-            proportion_ra = len(obs)*np.array(chi_square_ra)/np.sum(chi_square_ra)
-            proportion_dec = len(obs)*np.array(chi_square_dec)/np.sum(chi_square_dec)
+            # 0<k<1由各数据点的卡方最小值与最大值的比值开根号确定，k越小，越倾向于添加相同的floor，反之则按方差的比例分配
+            k = np.sqrt(np.min(chi_square_direction, axis=0)/np.max(chi_square_direction, axis=0))
+            print(f"k = {k[0]:.3f} {k[1]:.3f}")
+            proportion = len(obs) * cov[:, [0, 1], [0, 1]] / np.sum(cov[:, [0, 1], [0, 1]], axis=0)
             for i in range(len(obs)):
-                sys_cov[i] = np.diag(sys_err*(np.array(proportion_ra[i], proportion_dec[i])+1)/2)
+                sys_cov[i] = np.diag(sys_err*(proportion[i]*k+1-k))
 
             cov = cov_new + sys_cov
 
