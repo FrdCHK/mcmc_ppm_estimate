@@ -9,7 +9,7 @@ from sun_position import sun_position
 from units import mas2rad, rad2mas, mas2deg
 
 
-def adj(data, cov):
+def adj(data, cov, ref_epo=None):
     dec = np.deg2rad(data['DEC'])
     mean_dec = np.mean(dec)
     sDEC = np.sin(mean_dec)
@@ -20,7 +20,10 @@ def adj(data, cov):
     mean_ra = np.mean(ra)
     dx = rad2mas(ra - mean_ra)
     delta_t = data.at[data.index.size-1, "EPOCH"] - data.at[0, "EPOCH"]
-    t_0 = (data.at[data.index.size-1, "EPOCH"] + data.at[0, "EPOCH"]) / 2
+    if ref_epo is None:
+        t_0 = (data.at[data.index.size-1, "EPOCH"] + data.at[0, "EPOCH"]) / 2
+    else:
+        t_0 = ref_epo
     X_0 = np.array([[0], [0], [mas2rad(5)], [(dx.iat[-1] - dx.iat[0]) / delta_t], [(dy.iat[-1] - dy.iat[0]) / delta_t]])
     sRA = np.sin(mean_ra/cDEC)
     cRA = np.cos(mean_ra/cDEC)

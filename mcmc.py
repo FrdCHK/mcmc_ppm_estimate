@@ -134,10 +134,13 @@ def sampling(delta_epo, ob, cov, sun_pos, trigo, theta0):
         return sampler.get_chain(discard=2000, flat=True)  # 舍弃收敛前的样本，可根据数据实际情况调整数量
 
 
-def mcmc(data):
+def mcmc(data, ref_epo=None):
     print(f"{data.at[0, 'NAME']} {data.at[0, 'MODE']}")
     epoch = np.array(data['EPOCH'])
-    ref_epoch = (epoch[0]+epoch[-1])/2
+    if ref_epo is None:
+        ref_epoch = (epoch[0]+epoch[-1])/2
+    else:
+        ref_epoch = ref_epo
     delta_epoch = epoch-ref_epoch
     cov = np.zeros([data.index.size, 2, 2])
     for j, iter_item in data.iterrows():
